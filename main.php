@@ -9,103 +9,176 @@ Author URI: https://your-website.com/
 License: 
 */
 
+
 if (!defined('ABSPATH')) {
-    exit; // Exit if accessed directly
+    exit;
 }
 
-// Add a link to the settings page on the plugins listing screen
-function setting_page($links) {
-    $settings_link = '<a href="پنل تنظیمات">تنظیمات</a>';
-    array_push($links, $settings_link);
-    return $links;
-}
-add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'setting_page');
+class Taraz {
+    public function __construct() {
+        add_action('admin_menu', array($this, 'admin_menu'));
+        add_action('admin_post_taraz_save_settings', array($this, 'save_settings'));
+        add_action('woocommerce_thankyou', array($this, 'send_order_data'), 10, 1);
+        add_action('init', array($this, 'update_stock_data'));
+    }
 
-// Register the plugin settings
-function taraz_plugin_register_settings() {
-    add_settings_section('taraz_plugin', 'A to Z Plugin Settings', '', 't_plugin');
-    add_settings_field('taraz_plugin_token', 'Token', 'taraz_plugin_token_callback', 't_plugin', 'taraz_plugin');
-    register_setting('t_plugin', 'taraz_plugin_token');
-}
-add_action('admin_init', 'taraz_plugin_register_settings');
+    public function admin_menu() {
+        add_options_page(
+            'Taraz Settings',
+            'Taraz Settings',
+            'manage_options',
+            'taraz-settings',
+            array($this, 'settings_page')
+        );
+    }
 
-// Render the token input field
-function taraz_plugin_token_callback() {
-    $token = get_option('taraz_plugin_token');
-    echo '<input type="text" name="taraz_plugin_token" value="' . esc_attr($token) . '" />';
-}
+    public function settings_page() {
+        $user = get_option('taraz_user');
+        $password = get_option('taraz_password');
+        ?>
+        <div class="wrap">
+            <h1>Taraz Settings</h1>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <input type="hidden" name="action" value="taraz_save_settings">
+                <?php wp_nonce_field('taraz-settings-save', 'taraz-settings-nonce'); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="taraz_user">User</label></th>
+                        <td><input name="taraz_user" type="text" id="taraz_user" value="<?php echo esc_attr($user); ?>" class="regular-text"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="taraz_password">Password</label></th>
+                        <td><input name="taraz_password" type="password" id="taraz_password" value="<?php echo esc_attr($password); ?>" class="regular-text"></td>
+                    </tr>
+                </table>
+                <?php submit_button(); ?>
+            </form>
+        </div>
+        <?php
+    }
 
-// Create the plugin settings page
-function a_to_z_plugin_settings_page() {
-    ?>
-    <div class="wrap">
-        <h1>A to Z Plugin Settings</h1>
-        <form method="post" action="options.php">
-            <?php settings_fields('t_plugin'); ?>
-            <?php do_settings_sections('t_plugin'); ?>
-            <?php submit_button(); ?>
-        </form>
-    </div>
-    <?php
-}
-function a_to_z_plugin_add_settings_page() {
-    add_options_page('A to Z Plugin Settings', 'A to Z Plugin', 'manage_options', 't_plugin', 'a_to_z_plugin_settings_page');
-}
-add_action('admin_menu', 'a_to_z_plugin_add_settings_page');
+    public function save_settings() {
+        check_admin_referer('taraz-settings-save', 'taraz-settings-nonce');
+        update_option('taraz_user', sanitize_text_field($_POST['taraz_user']));
+        update_option('taraz_password', sanitize_text_field($_POST['taraz_password']));
+
+        // Redirect back to settings page
+        $redirect = add_query_arg('settings-updated', 'true', wp_get_referer());
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
+    private function get_token() {
+        $user = get_option('taraz_user');
+        $password = get_option('taraz_password');
+        $url = 'http://127.0.0.1:8080/tws/authenticate';
+        
+        $response = wp_remote_post($url, array(
+            'headers' => array('Content-Type' => 'application/json; charset=utf-8'),
+            'body' => json_encode(array('username' => $user, 'password' => $password))
+        ));
+        
+        if (is_wp_error($response)) {
+            return false;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        
+        $token = isset($body['token']) ? $body['token'] : false;
+        
+        if ($token) {
+            // Save the token value to be used later
+            update_option('taraz_token', $token);
+        }
+        
+        return $token;
+    }
+
+    public function update_stock_data() {
+        $token = $this->get_token();
+    
+        if (!$token) {
+            return;
+        }
+    
+        $currentDate = date('Y-m-d');
+        $persianDate = $this->convertToPersianDate($currentDate);
+    
+        $url = 'http://127.0.0.1:8080/tws/sale/goods?voucherDate=' . urlencode($persianDate) . '&voucherTypeID=60001&groupID=10000007&isWithImage=false';
+    
+        $response = wp_remote_get($url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json; charset=utf-8',
+                'Authorization' => 'Bearer ' . $token,
+            ),
+        ));
+    
+        if (is_wp_error($response)) {
+            return;
+        }
+    
+        $goods_data = json_decode(wp_remote_retrieve_body($response), true);
+    
+        if (empty($goods_data)) {
+            return;
+        }
+    
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'wc_product_meta_lookup';
+    
+        foreach ($goods_data as $item) {
+            $product_id = (int) $item['goodsID'];
+            $remain = (int) $item['remain'];
+    
+            $wpdb->update(
+                $table_name,
+                array('stock_quantity' => $remain),
+                array('product_id' => $product_id),
+                array('%d'),
+                array('%d')
+            );
+        }
+    }
+    
+    private function convertToPersianDate($date) {
+        $intlCalendar = IntlCalendar::fromDateTime($date);
+        $intlCalendar->setTimeZone('Asia/Tehran');
+        $persianDateFormatter = new IntlDateFormatter(
+            'fa_IR@calendar=persian',
+            IntlDateFormatter::FULL,
+            IntlDateFormatter::FULL,
+            'Asia/Tehran',
+            IntlDateFormatter::TRADITIONAL
+        );
+        $persianDateFormatter->setPattern('yyyy/MM/dd');
+        return $persianDateFormatter->format($intlCalendar);
+    }
 
 
-// Send sales to the URL
-function a_to_z_plugin_send_sales() {
-    $token = get_option('taraz_plugin_token');
-    $sales_url = 'http://127.0.0.1:8080/tws/sale';
+    
+    public function send_order_data($order_id) {
+        $order = wc_get_order($order_id);
+        $order_data = $order->get_data();
+        $token = $this->get_token();
 
-    // Get the latest order
-    $args = array(
-        'limit' => 1,
-        'status' => 'completed',
-        'orderby' => 'date',
-        'order' => 'DESC',
-    );
-    $latest_order = wc_get_orders($args);
+        if (!$token) {
+            return;
+        }
 
-    // Prepare the data to send
-    $data = array(
-        'token' => $token,
-        'sales' => $latest_order,
-    );
+        $url = 'http://127.0.0.1:8080/tws/sale/sale/vouchers';
 
-    // Send the data
-    wp_remote_post($sales_url, array(
-        'headers' => array('Content-Type' => 'application/json'),
-        'body' => json_encode($data),
-    ));
-}
-add_action('woocommerce_thankyou', 'a_to_z_plugin_send_sales');
+        $response = wp_remote_post($url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json; charset=utf-8',
+                'Authorization' => 'Bearer ' . $token
+            ),
+            'body' => json_encode($order_data)
+        ));
 
-
-// Retrieve product inventory from the URL
-function a_to_z_plugin_retrieve_inventory() {
-    $token = get_option('taraz_plugin_token');
-    $inventory_url = 'http://127.0.0.1:8080/tws/inventory';
-
-    // Prepare the data to send
-    $data = array(
-        'token' => $token,
-    );
-
-    // Retrieve the inventory
-    $response = wp_remote_post($inventory_url, array(
-        'headers' => array('Content-Type' => 'application/json'),
-        'body' => json_encode($data),
-    ));
-
-    // Process the response
-    if (!is_wp_error($response)) {
-        $body = wp_remote_retrieve_body($response);
-        $inventory = json_decode($body, true);
-
-        // Process the inventory data
-        // ...
+        if (is_wp_error($response)) {
+            // Handle error
+        }
     }
 }
-add_action('wp_loaded', 'a_to_z_plugin_retrieve_inventory');
+
+new Taraz();
