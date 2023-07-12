@@ -5,7 +5,6 @@ Plugin URI: https://tarazgroup.com/
 Description: 
 Version: 1.0
 Author:Aryan Mostafavi
-Author URI: https://your-website.com/
 License: 
 */
 
@@ -20,6 +19,11 @@ class Taraz {
         add_action('admin_post_taraz_save_settings', array($this, 'save_settings'));
         add_action('woocommerce_thankyou', array($this, 'send_order_data'), 10, 1);
         add_action('init', array($this, 'update_stock_data'));
+        add_action('init', array($this, 'get_token'));
+        add_action('woocommerce_thankyou', array($this, 'post_customer_data'), 10, 1);
+        add_action('woocommerce_new_customer', 'call_post_customer_data', 10, 1);
+
+
     }
 
     public function admin_menu() {
@@ -37,7 +41,7 @@ class Taraz {
         $password = get_option('taraz_password');
         ?>
         <div class="wrap">
-            <h1>Taraz Settings</h1>
+            <h1>تنظیمات سامانه تراز سامانه</h1>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="taraz_save_settings">
                 <?php wp_nonce_field('taraz-settings-save', 'taraz-settings-nonce'); ?>
@@ -68,7 +72,7 @@ class Taraz {
         exit;
     }
 
-    private function get_token() {
+    public function get_token() {
         $user = get_option('taraz_user');
         $password = get_option('taraz_password');
         $url = 'http://127.0.0.1:8080/tws/authenticate';
@@ -104,7 +108,7 @@ class Taraz {
         $currentDate = date('Y-m-d');
         $persianDate = $this->convertToPersianDate($currentDate);
     
-        $url = 'http://127.0.0.1:8080/tws/sale/goods?voucherDate=' . urlencode($persianDate) . '&voucherTypeID=60001&groupID=10000007&isWithImage=false';
+        $url = 'http://127.0.0.1:8080/tws/sale/goods?voucherDate=' . urlencode($persianDate) . '&voucherTypeID=60001&storeID=10000001&groupID=10000007&isWithImage=false';
     
         $response = wp_remote_get($url, array(
             'headers' => array(
@@ -118,14 +122,16 @@ class Taraz {
         }
     
         $goods_data = json_decode(wp_remote_retrieve_body($response), true);
-    
+    //    echo " <script language='javascript'>
+    //     console.log(" . json_encode($goods_data) . ");
+    //     </script>";
         if (empty($goods_data)) {
             return;
         }
     
         global $wpdb;
         $table_name = $wpdb->prefix . 'wc_product_meta_lookup';
-    
+        
         foreach ($goods_data as $item) {
             $product_id = (int) $item['goodsID'];
             $remain = (int) $item['remain'];
@@ -133,12 +139,31 @@ class Taraz {
             $wpdb->update(
                 $table_name,
                 array('stock_quantity' => $remain),
-                array('product_id' => $product_id),
+                array('sku' => $product_id),
                 array('%d'),
                 array('%d')
             );
+            $this->update_meta_inv_data($product_id , $remain);
         }
     }
+      private function update_meta_inv_data ($id ,$remain){
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'wc_product_meta_lookup';
+        
+            $product_id = $wpdb->get_results( "SELECT product_id FROM $table_name 
+            where sku=$id", OBJECT );
+        
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'postmeta';
+        
+        $stock = $wpdb->get_results("UPDATE $table_name
+        SET meta_value = $remain 
+        WHERE post_id = " . $product_id[0]->product_id . "
+        AND meta_key = '_stock'", OBJECT);
+        
+      }
     
     private function convertToPersianDate($date) {
         $intlCalendar = IntlCalendar::fromDateTime($date);
@@ -157,28 +182,144 @@ class Taraz {
 
     
     public function send_order_data($order_id) {
+
+
         $order = wc_get_order($order_id);
         $order_data = $order->get_data();
         $token = $this->get_token();
+        $order_items = $order->get_items();
+    
+
+    
+        foreach ($order_items as $item_id => $item) {
+            $product = $item->get_product();
+            $sku = $product->get_sku();
+            $quantity = $item->get_quantity();
+            $fee = $item->get_total() - $item->get_subtotal();
+            $price = $item->get_total();
+        };
+
+            echo var_dump($sku ,$quantity ,$fee);
+            $orders_data = [
+                'header' => [
+                    'voucherTypeID' => 6001,
+                    'customerID' => 10000003,
+                    'storeID' => 10000001
+                ],
+                'other' => [],
+                'details' => [
+                    [
+                        'goodsID' => intval($sku),
+                        'secUnitID' => 10000001,
+                        'quantity' => intval($quantity),
+                        'fee' => intval($fee)
+                    ]
+                ],
+                'promotions' => [],
+                'elements' => []
+            ];
+
+
 
         if (!$token) {
             return;
         }
 
-        $url = 'http://127.0.0.1:8080/tws/sale/sale/vouchers';
+        $url = 'http://127.0.0.1:8080/tws/sale/vouchers';
 
         $response = wp_remote_post($url, array(
             'headers' => array(
                 'Content-Type' => 'application/json; charset=utf-8',
                 'Authorization' => 'Bearer ' . $token
             ),
-            'body' => json_encode($order_data)
+            'body' => json_decode(json_encode($orders_data))
         ));
 
+
+
+
+
         if (is_wp_error($response)) {
-            // Handle error
         }
     }
+
+
+    // function call_post_customer_data($customer_id) {
+    //     $taraz_instance = new Taraz();
+    //     $taraz_instance->post_customer_data($customer_id);
+    // }
+
+
+
+    public function post_customer_data($order_id) {
+
+        // echo "ewrwr";
+        // echo " <script language='javascript'>
+        // console.log(12313);
+        // </script>";
+
+        //    echo " <script language='javascript'>
+        // console.log(" . json_encode($orders_data) . ");
+        // </script>";
+
+
+        // echo " <script language='javascript'>
+        // console.log(2342424234);
+        // </script>";
+
+
+        $order = wc_get_order($order_id);
+        $billing_address = $order->get_address('billing');
+    
+        $customer_data = array(
+            'perComFName' => $billing_address['first_name'],
+            'perComLName' => $billing_address['last_name'],
+            'userLoginName' => '',
+            'organizationID' => 10000001,
+            'isOrganizationOwner' => true,
+            'userMobileNumber' => $billing_address['phone'],
+            'priorityID' => 10000001,
+            'organizationalRank' => ''
+        );
+    
+        $token = $this->get_token();
+    
+        if (!$token) {
+            return;
+        }
+    
+        $url = 'http://127.0.0.1:8080/tws/tkt/customers';
+    
+        $response = wp_remote_post($url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json; charset=utf-8',
+                'Authorization' => 'Bearer ' . $token
+            ),
+            'body' => json_encode($customer_data)
+        ));
+    
+        if (is_wp_error($response)) {
+            return;
+        }
+    
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+    
+        $customer_id = isset($body['customerID']) ? $body['customerID'] : false;
+    
+        if ($customer_id) {
+            global $wpdb;
+            $wpdb->update(
+                $wpdb->prefix . 'woocommerce_order_items',
+                array('customer_id' => $customer_id),
+                array('order_id' => $order_id),
+                array('%d'),
+                array('%d')
+            );
+        }
+    }
+    
+
 }
 
 new Taraz();
+
