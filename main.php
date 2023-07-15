@@ -17,11 +17,11 @@ class Taraz {
     public function __construct() {
         add_action('admin_menu', array($this, 'admin_menu'));
         add_action('admin_post_taraz_save_settings', array($this, 'save_settings'));
+        add_action('woocommerce_thankyou', array($this, 'post_customer_data'), 10, 1);
         add_action('woocommerce_thankyou', array($this, 'send_order_data'), 10, 1);
         add_action('init', array($this, 'update_stock_data'));
         add_action('init', array($this, 'get_token'));
-        add_action('woocommerce_thankyou', array($this, 'post_customer_data'), 10, 1);
-        add_action('woocommerce_new_customer', 'call_post_customer_data', 10, 1);
+        // add_action('woocommerce_new_customer', 'call_post_customer_data', 10, 1);
 
 
     }
@@ -39,25 +39,40 @@ class Taraz {
     public function settings_page() {
         $user = get_option('taraz_user');
         $password = get_option('taraz_password');
+        $db_prefix = get_option('taraz_db_prefix');
+
         ?>
-        <div class="wrap">
-            <h1>تنظیمات سامانه تراز سامانه</h1>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="taraz_save_settings">
-                <?php wp_nonce_field('taraz-settings-save', 'taraz-settings-nonce'); ?>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row"><label for="taraz_user">User</label></th>
-                        <td><input name="taraz_user" type="text" id="taraz_user" value="<?php echo esc_attr($user); ?>" class="regular-text"></td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="taraz_password">Password</label></th>
-                        <td><input name="taraz_password" type="password" id="taraz_password" value="<?php echo esc_attr($password); ?>" class="regular-text"></td>
-                    </tr>
-                </table>
-                <?php submit_button(); ?>
-            </form>
-        </div>
+
+
+<div style="">
+    <h1>تنظیمات سامانه تراز سامانه</h1>
+    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+        <input type="hidden" name="action" value="taraz_save_settings">
+        <?php wp_nonce_field('taraz-settings-save', 'taraz-settings-nonce'); ?>
+        <table class="form-table">
+            <tr style="padding=20px">
+                <th scope="row"><label for="taraz_user">نام کاربری</label></th>
+                <td><input name="taraz_user" type="text" id="taraz_user" 
+                value="<?php echo esc_attr($user); ?>" class="regular-text"></td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="taraz_password">گذرواژه</label></th>
+                <td><input name="taraz_password" type="password" id="taraz_password" 
+                value="<?php echo esc_attr($password); ?>" class="regular-text"></td>
+            </tr>
+            <tr>
+    <th scope="row"><label for="taraz_db_prefix">پسوند دیتابیس</label></th>
+    <td>
+        <input name="taraz_db_prefix" type="text" id="taraz_db_prefix" data="fuck"
+        value="<?php echo esc_attr( ! empty($db_prefix) ? $db_prefix : 'wp_' ); ?>" class="regular-text">
+    </td>
+</tr>
+        </table>
+        <?php submit_button('ذخیره اطلاعات', 'primary', 'submit', false); ?>
+    </form>
+</div>
+
+
         <?php
     }
 
@@ -65,6 +80,8 @@ class Taraz {
         check_admin_referer('taraz-settings-save', 'taraz-settings-nonce');
         update_option('taraz_user', sanitize_text_field($_POST['taraz_user']));
         update_option('taraz_password', sanitize_text_field($_POST['taraz_password']));
+        update_option('taraz_db_prefix', sanitize_text_field($_POST['taraz_db_prefix']));
+
 
         // Redirect back to settings page
         $redirect = add_query_arg('settings-updated', 'true', wp_get_referer());
@@ -183,47 +200,54 @@ class Taraz {
     
     public function send_order_data($order_id) {
 
+     
 
         $order = wc_get_order($order_id);
         $order_data = $order->get_data();
         $token = $this->get_token();
         $order_items = $order->get_items();
-    
+        $customer_Id = $order->get_customer_id();
+        $other = (object) array(
+        );
+        echo " <script language='javascript'>
+        console.log($customer_Id);
+        </script>";
+        echo " <script language='javascript'>
+        console.log(" . json_encode($customer_Id) . ");
+        </script>";
 
-    
         foreach ($order_items as $item_id => $item) {
             $product = $item->get_product();
             $sku = $product->get_sku();
             $quantity = $item->get_quantity();
             $fee = $item->get_total() - $item->get_subtotal();
             $price = $item->get_total();
+            
         };
 
-            echo var_dump($sku ,$quantity ,$fee);
             $orders_data = [
                 'header' => [
                     'voucherTypeID' => 6001,
-                    'customerID' => 10000003,
+                    'customerID' => 20000003,
                     'storeID' => 10000001
                 ],
-                'other' => [],
+                'other' => $other,
                 'details' => [
                     [
-                        'goodsID' => intval($sku),
+                        'goodsID' => 10000001,
                         'secUnitID' => 10000001,
-                        'quantity' => intval($quantity),
-                        'fee' => intval($fee)
+                        'quantity' => 1,
+                        'fee' => 0
                     ]
                 ],
                 'promotions' => [],
                 'elements' => []
             ];
-
-
-
         if (!$token) {
             return;
+            
         }
+      
 
         $url = 'http://127.0.0.1:8080/tws/sale/vouchers';
 
@@ -232,93 +256,99 @@ class Taraz {
                 'Content-Type' => 'application/json; charset=utf-8',
                 'Authorization' => 'Bearer ' . $token
             ),
-            'body' => json_decode(json_encode($orders_data))
+            'body' =>json_encode($orders_data)
+
         ));
-
-
-
-
-
-        if (is_wp_error($response)) {
-        }
+    
     }
 
-
-    // function call_post_customer_data($customer_id) {
-    //     $taraz_instance = new Taraz();
-    //     $taraz_instance->post_customer_data($customer_id);
-    // }
 
 
 
     public function post_customer_data($order_id) {
-
-        // echo "ewrwr";
-        // echo " <script language='javascript'>
-        // console.log(12313);
-        // </script>";
-
-        //    echo " <script language='javascript'>
-        // console.log(" . json_encode($orders_data) . ");
-        // </script>";
-
-
-        // echo " <script language='javascript'>
-        // console.log(2342424234);
-        // </script>";
-
-
+  
         $order = wc_get_order($order_id);
+        $order_data = $order->get_data();
         $billing_address = $order->get_address('billing');
-    
+        $order_customer_Id = $order->get_customer_id();
+
+        echo " <script language='javascript'>
+        console.log($order);
+        </script>";
+        echo " <script language='javascript'>
+        console.log(" . json_encode($order) . ");
+        </script>";
         $customer_data = array(
             'perComFName' => $billing_address['first_name'],
             'perComLName' => $billing_address['last_name'],
-            'userLoginName' => '',
+            'userLoginName' => $billing_address['email'].rand(),
             'organizationID' => 10000001,
             'isOrganizationOwner' => true,
             'userMobileNumber' => $billing_address['phone'],
             'priorityID' => 10000001,
             'organizationalRank' => ''
         );
+     
     
-        $token = $this->get_token();
+        $customer_id = $this->get_customer_id($billing_address['email']);
     
-        if (!$token) {
-            return;
-        }
+
+
+        // if (!$customer_id) {
+            $token = $this->get_token();
     
-        $url = 'http://127.0.0.1:8080/tws/tkt/customers';
+            if (!$token) {
+                return;
+            }
     
-        $response = wp_remote_post($url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json; charset=utf-8',
-                'Authorization' => 'Bearer ' . $token
-            ),
-            'body' => json_encode($customer_data)
-        ));
+            $url = 'http://127.0.0.1:8080/tws/tkt/customers';
     
-        if (is_wp_error($response)) {
-            return;
-        }
+            $response = wp_remote_post($url, array(
+                'headers' => array(
+                    'Content-Type' => 'application/json; charset=utf-8',
+                    'Authorization' => 'Bearer ' . $token
+                ),
+                'body' => json_encode($customer_data)
+            ));
     
-        $body = json_decode(wp_remote_retrieve_body($response), true);
+      
+            if (is_wp_error($response)) {
+                return;
+            }
     
-        $customer_id = isset($body['customerID']) ? $body['customerID'] : false;
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+    
+            $customer_id = isset($body['customerID']) ? $body['customerID'] : false;
+
+        // }
     
         if ($customer_id) {
             global $wpdb;
             $wpdb->update(
-                $wpdb->prefix . 'woocommerce_order_items',
+                $wpdb->prefix . 'wp_wc_customer_lookup',
                 array('customer_id' => $customer_id),
-                array('order_id' => $order_id),
+                array('customer_id' => $order_customer_Id),
                 array('%d'),
                 array('%d')
             );
+            // global $wpdb;
+            // $wpdb->update(
+            //     $wpdb->prefix .  'wp_wc_customer_lookup',
+            //     array('customer_id' => $customer_id),
+            //     array('customer_id' => $order_customer_Id),
+            //     array('%d'),
+            //     array('%d')
+            // );
         }
     }
     
+    private function get_customer_id($email) {
+        $customer = get_user_by('email', $email);
+        return $customer ? $customer->ID : false;
 
+
+    }
+    
 }
 
 new Taraz();
