@@ -2,10 +2,10 @@
 /*
 Plugin Name: taraz group plgugin
 Plugin URI: https://tarazgroup.com/
-Description: 
+Description:
 Version: 1.0
 Author:Aryan Mostafavi
-License: 
+License:
 */
 
 
@@ -23,10 +23,8 @@ class Taraz
         add_action('woocommerce_thankyou', array($this, 'send_order_data'), 10, 1);
         add_action('init', array($this, 'update_stock_data'));
         add_action('init', array($this, 'get_token'));
-        // add_action('woocommerce_new_customer', 'call_post_customer_data', 10, 1);
-
-
     }
+
 
     public function admin_menu()
     {
@@ -39,6 +37,7 @@ class Taraz
         );
     }
 
+
     public function settings_page()
     {
         $user = get_option('taraz_user');
@@ -46,10 +45,8 @@ class Taraz
         $db_prefix = get_option('taraz_db_prefix');
         $voucherTypeID = get_option('taraz_voucherTypeID');
         $storeID = get_option('taraz_storeID');
-        $secUnitID = get_option('taraz_secUnitID');
+        $goodsGroupID = get_option('taraz_goodsGroupID');
 
-
-        // http://127.0.0.1:8080/tws/pub/vouchertypes?systemID=6
         ?>
         <div>
             <h1>تنظیمات سامانه تراز سامانه</h1>
@@ -67,12 +64,12 @@ class Taraz
                         <tr style="padding=20px">
                             <th scope="row"><label for="taraz_user">نام کاربری</label></th>
                             <td><input name="taraz_user" type="text" id="taraz_user" value="<?php echo esc_attr($user); ?>"
-                                    class="regular-text"></td>
+                                       class="regular-text"></td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="taraz_password">گذرواژه</label></th>
                             <td><input name="taraz_password" type="password" id="taraz_password"
-                                    value="<?php echo esc_attr($password); ?>" class="regular-text"></td>
+                                       value="<?php echo esc_attr($password); ?>" class="regular-text"></td>
                         </tr>
                     </table>
                     <?php submit_button('ذخیره اطلاعات', 'primary', 'pre-submit', false); ?>
@@ -84,149 +81,37 @@ class Taraz
                         <tr>
                             <th scope="row"><label for="taraz_db_prefix">پسوند دیتابیس</label></th>
                             <td>
-                                <input name="taraz_db_prefix" type="text" id="taraz_db_prefix" data="fuck"
-                                    value="<?php echo esc_attr(!empty($db_prefix) ? $db_prefix : 'wp_'); ?>"
-                                    class="regular-text">
+                                <input name="taraz_db_prefix" type="text" id="taraz_db_prefix"
+                                       value="<?php echo esc_attr(!empty($db_prefix) ? $db_prefix : 'wp_'); ?>"
+                                       class="regular-text">
                             </td>
                         </tr>
                         <tr>
                             <th scope="row"><label for="taraz_voucherTypeID">نوع سند</label></th>
                             <td>
                                 <select name="taraz_voucherTypeID" id="taraz_voucherTypeID" class="regular-text">
-                                    <option value="">انتخاب کنید</option>
+                                    <?php echo $this->get_voucher_types_options($voucherTypeID); ?>
                                 </select>
                             </td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="taraz_storeID">storeID</label></th>
+                            <th scope="row"><label for="taraz_storeID">انبار</label></th>
                             <td>
-                                <input name="taraz_storeID" type="text" id="taraz_storeID"
-                                    value="<?php echo esc_attr($storeID); ?>" class="regular-text">
+                                <?php echo $this->get_stores_combo_box($storeID); ?>
                             </td>
                         </tr>
                         <tr>
-                            <th scope="row"><label for="taraz_secUnitID">secUnitID</label></th>
+                            <th scope="row"><label for="taraz_goodsGroupID">گروه کالا</label></th>
                             <td>
-                                <input name="taraz_secUnitID" type="text" id="taraz_secUnitID"
-                                    value="<?php echo esc_attr($secUnitID); ?>" class="regular-text">
+                                <select name="taraz_goodsGroupID" id="taraz_goodsGroupID" class="regular-text">
+                                    <?php echo $this->get_goods_groups_options($goodsGroupID); ?>
+                                </select>
                             </td>
                         </tr>
                     </table>
                     <?php submit_button('ذخیره اطلاعات', 'primary', 'submit', false); ?>
-
-
                 </div>
-
             </form>
-
-            <script>
-                document.addEventListener('DOMContentLoaded', function () {
-                    const tabLinks = document.querySelectorAll('.tab-link');
-                    const tabContents = document.querySelectorAll('.tab-content');
-
-                    tabLinks.forEach(link => {
-                        link.addEventListener('click', function () {
-                            const tabId = this.getAttribute('data-tab');
-                            showTab(tabId);
-                        });
-                    });
-
-                    function showTab(tabId) {
-                        tabLinks.forEach(link => link.classList.remove('active'));
-                        tabContents.forEach(content => content.classList.remove('active'));
-
-                        const selectedTabLink = document.querySelector(`[data-tab="${tabId}"]`);
-                        const selectedTabContent = document.getElementById(tabId);
-
-                        selectedTabLink.classList.add('active');
-                        selectedTabContent.classList.add('active');
-                    }
-                });
-                document.addEventListener('DOMContentLoaded', function () {
-                    document.querySelector('#submit').addEventListener('click', function (event) {
-                        event.preventDefault();
-                        window.location.href = '<?php echo esc_url(admin_url('plugins.php')); ?>';
-                    });
-                });
-
-                document.addEventListener('DOMContentLoaded', function () {
-                    function populateVoucherTypes() {
-                        const token = '<?php echo $this->get_token(); ?>';
-                        const headers = new Headers();
-                        headers.append('Authorization', `Bearer ${token}`);
-
-                        fetch('http://127.0.0.1:8080/tws/pub/vouchertypes?systemID=6', {
-                            method: 'GET',
-                            headers: headers,
-                        }).then(response => response.json())
-                            .then(data => {
-                                const voucherTypeIDSelect = document.getElementById('taraz_voucherTypeID');
-
-                                voucherTypeIDSelect.innerHTML = '<option value="">انتخاب کنید</option>';
-
-                                data.forEach(item => {
-                                    const option = document.createElement('option');
-                                    option.value = item.voucherTypeID;
-                                    option.textContent = item.voucherTypeDesc;
-                                    voucherTypeIDSelect.appendChild(option);
-                                });
-
-                                const voucherTypeIDInput = document.getElementById('taraz_voucherTypeID');
-                                voucherTypeIDSelect.value = voucherTypeIDInput.value;
-                            })
-                            .catch(error => console.error('Error fetching data:', error));
-                    }
-
-                    populateVoucherTypes();
-
-                    document.querySelector('#submit').addEventListener('click', function (event) {
-                        event.preventDefault();
-                        populateVoucherTypes();
-                        window.location.href = '<?php echo esc_url(admin_url('plugins.php')); ?>';
-                    });
-                });
-
-                document.addEventListener('DOMContentLoaded', function () {
-                    function populateVoucherTypes() {
-                        const token = '<?php echo $this->get_token(); ?>';
-                        const userID = '<?php echo get_option('taraz_userID'); ?>';
-                        const headers = new Headers();
-                        headers.append('Authorization', `Bearer ${token}`);
-                        fetch('http://127.0.0.1:8080/tws/pub/vouchertypes?systemID=6', {
-                            method: 'GET',
-                            headers: headers,
-                        }).then(response => response.json())
-                            .then(data => {
-                                const voucherTypeIDSelect = document.getElementById('taraz_voucherTypeID');
-
-                                voucherTypeIDSelect.innerHTML = '<option value="">انتخاب کنید</option>';
-
-                                data.forEach(item => {
-                                    const option = document.createElement('option');
-                                    option.value = item.voucherTypeID;
-                                    option.textContent = item.voucherTypeDesc;
-                                    voucherTypeIDSelect.appendChild(option);
-                                });
-
-                                const voucherTypeIDInput = document.getElementById('taraz_voucherTypeID');
-                                console.log(voucherTypeIDInput.value)
-
-                                voucherTypeIDSelect.value = voucherTypeIDInput.value;
-                                // console.log(voucherTypeIDSelect.value)
-                            })
-                            .catch(error => console.error('Error fetching data:', error));
-                    }
-
-                    populateVoucherTypes();
-
-                    document.querySelector('#submit').addEventListener('click', function (event) {
-                        event.preventDefault();
-                        populateVoucherTypes();
-                        window.location.href = '<?php echo esc_url(admin_url('plugins.php')); ?>';
-                    });
-                });
-            </script>
-
             <style>
                 .tab-navigation {
                     list-style: none;
@@ -257,25 +142,102 @@ class Taraz
                     display: block;
                 }
             </style>
-        </div>
+            <script>
+                document.addEventListener('DOMContentLoaded', function () {
+                    document.querySelector('#submit').addEventListener('click', function (event) {
+                        event.preventDefault();
+                        window.location.href = '<?php echo esc_url(admin_url('plugins.php')); ?>';
+                    });
+                });
 
+                document.addEventListener('DOMContentLoaded', function () {
+                    const tabLinks = document.querySelectorAll('.tab-link');
+                    const tabContents = document.querySelectorAll('.tab-content');
+
+                    tabLinks.forEach(link => {
+                        link.addEventListener('click', function () {
+                            const tabId = this.getAttribute('data-tab');
+                            showTab(tabId);
+                        });
+                    });
+
+                    function showTab(tabId) {
+                        tabLinks.forEach(link => link.classList.remove('active'));
+                        tabContents.forEach(content => content.classList.remove('active'));
+
+                        const selectedTabLink = document.querySelector(`[data-tab="${tabId}"]`);
+                        const selectedTabContent = document.getElementById(tabId);
+
+                        selectedTabLink.classList.add('active');
+                        selectedTabContent.classList.add('active');
+                    }
+                });
+            </script>
+        </div>
         <?php
     }
 
+    private function get_voucher_types_options($selectedType)
+    {
+        $token = $this->get_token();
+        if (!$token) {
+            return '<option value="">Cannot fetch voucher types</option>';
+        }
+
+        $url = 'http://127.0.0.1:8080/tws/pub/vouchertypes?systemID=6';
+
+        $headers = array(
+            'Content-Type' => 'application/json; charset=utf-8',
+            'Authorization' => 'Bearer ' . $token,
+        );
+
+        $response = wp_remote_get($url, array('headers' => $headers));
+
+        if (is_wp_error($response)) {
+            return '<option value="">Cannot fetch voucher types</option>';
+        }
+
+        $voucher_types = json_decode(wp_remote_retrieve_body($response), true);
+
+        $options = '<option value="">انتخاب کنید</option>';
+
+        if (is_array($voucher_types) && !empty($voucher_types)) {
+            foreach ($voucher_types as $type) {
+                $option_value = esc_attr($type['voucherTypeID']);
+                $option_label = esc_html($type['voucherTypeDesc']);
+                $selected = $selectedType == $type['voucherTypeID'] ? 'selected' : '';
+                $options .= "<option value='$option_value' $selected>$option_label</option>";
+            }
+        }
+
+        return $options;
+    }
 
     public function save_settings()
     {
-        check_admin_referer('taraz-settings-save', 'taraz-settings-nonce');
-        update_option('taraz_user', sanitize_text_field($_POST['taraz_user']));
-        update_option('taraz_password', sanitize_text_field($_POST['taraz_password']));
-        update_option('taraz_db_prefix', sanitize_text_field($_POST['taraz_db_prefix']));
-        update_option('taraz_voucherTypeID', sanitize_text_field($_POST['taraz_voucherTypeID']));
-        update_option('taraz_storeID', sanitize_text_field($_POST['taraz_storeID']));
-        update_option('taraz_secUnitID', sanitize_text_field($_POST['taraz_secUnitID']));
-        $redirect = add_query_arg('settings-updated', 'true', wp_get_referer());
-        wp_safe_redirect($redirect);
-        exit;
+        if (isset($_POST['action']) && $_POST['action'] === 'taraz_save_settings') {
+            check_admin_referer('taraz-settings-save', 'taraz-settings-nonce');
+
+            $taraz_user = isset($_POST['taraz_user']) ? sanitize_text_field($_POST['taraz_user']) : '';
+            $taraz_password = isset($_POST['taraz_password']) ? sanitize_text_field($_POST['taraz_password']) : '';
+            $taraz_db_prefix = isset($_POST['taraz_db_prefix']) ? sanitize_text_field($_POST['taraz_db_prefix']) : '';
+            $taraz_voucherTypeID = isset($_POST['taraz_voucherTypeID']) ? sanitize_text_field($_POST['taraz_voucherTypeID']) : '';
+            $taraz_storeID = isset($_POST['taraz_storeID']) ? sanitize_text_field($_POST['taraz_storeID']) : '';
+            $taraz_goodsGroupID = isset($_POST['taraz_goodsGroupID']) ? sanitize_text_field($_POST['taraz_goodsGroupID']) : '';
+
+            update_option('taraz_user', $taraz_user);
+            update_option('taraz_password', $taraz_password);
+            update_option('taraz_db_prefix', $taraz_db_prefix);
+            update_option('taraz_voucherTypeID', $taraz_voucherTypeID);
+            update_option('taraz_storeID', $taraz_storeID);
+            update_option('taraz_goodsGroupID', $taraz_goodsGroupID);
+
+            $redirect = add_query_arg('settings-updated', 'true', wp_get_referer());
+            wp_safe_redirect($redirect);
+            exit;
+        }
     }
+
 
     public function get_token()
     {
@@ -330,8 +292,93 @@ class Taraz
 
     }
 
+    public function get_goods_groups_options($selectedGroup)
+    {
+        $token = $this->get_token();
+        if (!$token) {
+            return '<option value="">Cannot fetch goods groups</option>';
+        }
+
+        $url = 'http://127.0.0.1:8080/tws/inv/goodsgroups';
+
+        $headers = array(
+            'Content-Type' => 'application/json; charset=utf-8',
+            'Authorization' => 'Bearer ' . $token,
+        );
+
+        $response = wp_remote_get($url, array('headers' => $headers));
+
+        if (is_wp_error($response)) {
+            return '<option value="">Cannot fetch goods groups</option>';
+        }
+
+        $goods_groups = json_decode(wp_remote_retrieve_body($response), true);
+
+        $options = '<option value="">انتخاب کنید</option>';
+
+        if (is_array($goods_groups) && !empty($goods_groups)) {
+            foreach ($goods_groups as $group) {
+                $option_value = esc_attr($group['groupID']);
+                $option_label = esc_html($group['groupDesc']);
+                $selected = $selectedGroup == $group['groupID'] ? 'selected' : '';
+                $options .= "<option value='$option_value' $selected>$option_label</option>";
+            }
+        }
+
+        return $options;
+    }
+
+    private function get_stores_combo_box($selectedStoreID)
+    {
+        $token = $this->get_token();
+        if (!$token) {
+            return '<select name="taraz_storeID" id="taraz_storeID" class="regular-text">
+                        <option value="">Cannot fetch stores</option>
+                    </select>';
+        }
+
+        $userID = get_option('taraz_user');
+
+        $url = 'http://127.0.0.1:8080/tws/inv/getstoreuserwebs?userID=' . urlencode($userID);
+
+        $headers = array(
+            'Content-Type' => 'application/json; charset=utf-8',
+            'Authorization' => 'Bearer ' . $token,
+        );
+
+        $response = wp_remote_get($url, array('headers' => $headers));
+
+        if (is_wp_error($response)) {
+            return '<select name="taraz_storeID" id="taraz_storeID" class="regular-text">
+                        <option value="">Cannot fetch stores</option>
+                    </select>';
+        }
+
+        $stores_data = json_decode(wp_remote_retrieve_body($response), true);
+
+        $options = '<select name="taraz_storeID" id="taraz_storeID" class="regular-text">';
+        $options .= '<option value="">انتخاب کنید</option>';
+
+        if (is_array($stores_data) && !empty($stores_data)) {
+            foreach ($stores_data as $store) {
+                $option_value = esc_attr($store['storeID']);
+                $option_label = esc_html($store['storeName']);
+                $selected = $selectedStoreID == $store['storeID'] ? 'selected' : '';
+                $options .= "<option value='$option_value' $selected>$option_label</option>";
+            }
+        }
+
+        $options .= '</select>';
+
+        return $options;
+    }
     public function update_stock_data()
     {
+        $voucherID = get_option('taraz_voucherTypeID');
+        $storeID = get_option('taraz_storeID');
+        $goodsGroupID = get_option('taraz_goodsGroupID');
+
+
         $token = $this->get_token();
 
         if (!$token) {
@@ -340,7 +387,7 @@ class Taraz
 
         $currentDate = date('Y-m-d');
         $persianDate = $this->convertToPersianDate($currentDate);
-        $url = 'http://127.0.0.1:8080/tws/sale/goods?voucherDate=' . urlencode($persianDate) . '&voucherTypeID=60001&storeID=10000001&groupID=10000007&isWithImage=false';
+        $url = 'http://127.0.0.1:8080/tws/sale/goods?voucherDate=' . urlencode($persianDate) . '&voucherTypeID=' . urlencode($voucherID) . '&storeID='. urlencode($storeID) . '&groupID='. urlencode($goodsGroupID) .'&isWithImage=false';
         $response = wp_remote_get(
             $url,
             array(
@@ -356,9 +403,6 @@ class Taraz
         }
 
         $goods_data = json_decode(wp_remote_retrieve_body($response), true);
-        //    echo " <script language='javascript'>
-        //     console.log(" . json_encode($goods_data) . ");
-        //     </script>";
         if (empty($goods_data)) {
             return;
         }
@@ -429,12 +473,6 @@ class Taraz
         $customer_Id = $order->get_customer_id();
         $other = (object) array(
         );
-        echo " <script language='javascript'>
-        console.log($customer_Id);
-        </script>";
-        echo " <script language='javascript'>
-        console.log(" . json_encode($customer_Id) . ");
-        </script>";
 
         foreach ($order_items as $item_id => $item) {
             $product = $item->get_product();
@@ -444,7 +482,7 @@ class Taraz
             $price = $item->get_total();
 
         }
-        ;
+
 
         $orders_data = [
             'header' => [
